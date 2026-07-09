@@ -120,6 +120,8 @@ const state = {
   libraryError: "",
   location: null,
   locationSource: "",
+  locationAccuracy: null,
+  mapSelectMode: false,
   mapStatus: "idle",
   authUser: null,
   authStatus: "idle",
@@ -361,6 +363,10 @@ function renderMapPanel() {
 }
 
 function renderMapStatus() {
+  if (state.mapSelectMode) {
+    return `<div class="map-status">지도에서 현재 위치를 눌러 지정해 주세요</div>`;
+  }
+
   if (state.mapStatus === "error") {
     return `<div class="map-status error">카카오 지도 SDK를 불러오지 못했습니다. JavaScript 키와 등록 도메인을 확인해 주세요.</div>`;
   }
@@ -393,11 +399,24 @@ function renderFallbackPin(library) {
 
 function renderLocationNotice() {
   if (!state.locationSource) return "";
-  const text =
-    state.locationSource === "current"
-      ? "현재 위치 기준으로 주변 도서관을 검색했습니다."
+  const accuracy = Number(state.locationAccuracy);
+  const accuracyText = Number.isFinite(accuracy) && accuracy > 0
+    ? ` · 정확도 약 ${Math.round(accuracy)}m`
+    : "";
+  const text = state.locationSource === "current"
+    ? `현재 위치 기준으로 주변 도서관을 검색했습니다${accuracyText}.`
+    : state.locationSource === "manual"
+      ? "지도에서 지정한 위치 기준으로 주변 도서관을 검색했습니다."
       : "위치 권한이 없어서 서울 시청 기준으로 도서관을 검색했습니다.";
-  return `<p class="api-note">${text}</p>`;
+  return `
+    <div class="location-notice">
+      <p class="api-note">${text}</p>
+      <div class="location-actions">
+        <button class="ghost-button compact" data-action="retry-location">내 위치 다시 찾기</button>
+        <button class="ghost-button compact" data-action="pick-location">지도에서 위치 지정</button>
+      </div>
+    </div>
+  `;
 }
 
 function renderLibraryList() {
@@ -692,7 +711,19 @@ function bindEvents() {
       }
       if (action === "reload-libraries") {
         state.libraryStatus = "idle";
+        loadLibraries({ force: true, useExistingLocation: true });
+      }
+      if (action === "retry-location") {
+        state.location = null;
+        state.locationSource = "";
+        state.locationAccuracy = null;
+        state.libraryStatus = "idle";
+        state.mapStatus = "idle";
         loadLibraries({ force: true });
+      }
+      if (action === "pick-location") {
+        state.mapSelectMode = true;
+        render();
       }
     });
   });
@@ -833,7 +864,7 @@ async function startGoogleLogin() {
   }
 }
 
-async function loadLibraries({ force = false } = {}) {
+async function loadLibraries({ force = false, useExistingLocation = false } = {}) {
   if (state.screen !== "home") return;
   if (!force && (state.libraryStatus === "loading" || state.libraryStatus === "loaded")) return;
 
@@ -843,9 +874,16 @@ async function loadLibraries({ force = false } = {}) {
 
   try {
     await loadConfig();
-    const location = await resolveLocation();
+    const location = useExistingLocation && state.location
+      ? {
+          coords: state.location,
+          source: state.locationSource || "manual",
+          accuracy: state.locationAccuracy,
+        }
+      : await resolveLocation();
     state.location = location.coords;
     state.locationSource = location.source;
+    state.locationAccuracy = location.accuracy ?? null;
     render();
 
     const params = new URLSearchParams({
@@ -872,25 +910,51 @@ async function loadLibraries({ force = false } = {}) {
 
 function resolveLocation() {
   return new Promise((resolve) => {
-    if (!navigator.geolocation) {
-      resolve({ coords: defaultLocation, source: "default" });
+    if (!navigator.geolocation?.watchPosition) {
+      resolve({ coords: defaultLocation, source: "default", accuracy: null });
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(
+    let bestPosition = null;
+    let settled = false;
+    let watchId = null;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      clearTimeout(timeoutId);
+      resolve(result);
+    };
+    const timeoutId = setTimeout(() => {
+      finish(bestPosition
+        ? positionResult(bestPosition)
+        : { coords: defaultLocation, source: "default", accuracy: null });
+    }, 8000);
+
+    watchId = navigator.geolocation.watchPosition(
       (position) => {
-        resolve({
-          coords: {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          },
-          source: "current",
-        });
+        if (!bestPosition || position.coords.accuracy < bestPosition.coords.accuracy) {
+          bestPosition = position;
+        }
+        if (position.coords.accuracy <= 60) finish(positionResult(position));
       },
-      () => resolve({ coords: defaultLocation, source: "default" }),
-      { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 },
+      () => {
+        if (!bestPosition) finish({ coords: defaultLocation, source: "default", accuracy: null });
+      },
+      { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 },
     );
   });
+}
+
+function positionResult(position) {
+  return {
+    coords: {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+    },
+    source: "current",
+    accuracy: position.coords.accuracy,
+  };
 }
 
 function placeLibrariesOnFallbackMap(libraries, center) {
@@ -1014,6 +1078,20 @@ function initMapIfPossible() {
       kakaoMapInstance = new kakao.maps.Map(node, {
         center,
         level: 5,
+      });
+      kakao.maps.event.addListener(kakaoMapInstance, "click", (mouseEvent) => {
+        if (!state.mapSelectMode) return;
+        const selected = mouseEvent.latLng;
+        state.location = {
+          latitude: selected.getLat(),
+          longitude: selected.getLng(),
+        };
+        state.locationSource = "manual";
+        state.locationAccuracy = 0;
+        state.mapSelectMode = false;
+        state.libraryStatus = "idle";
+        state.mapStatus = "idle";
+        loadLibraries({ force: true, useExistingLocation: true });
       });
 
       kakaoMarkerInstances.forEach((marker) => marker.setMap(null));

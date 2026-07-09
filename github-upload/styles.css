@@ -691,6 +691,19 @@ button {
   line-height: 1.45;
 }
 
+.location-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ghost-button.compact {
+  min-height: 40px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
 .kakao-label {
   border: 0;
   border-radius: 6px;
