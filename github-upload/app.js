@@ -262,7 +262,7 @@ function renderCreateFaction() {
 }
 
 function renderFactionCard(faction) {
-  const active = state.selectedFaction === faction.id ? " active" : "";
+  const active = String(state.selectedFaction) === String(faction.id) ? " active" : "";
   return `
     <button class="faction-card${active}" data-action="select-faction" data-id="${escapeHtml(faction.id)}" style="color:${safeColor(faction.color)}">
       <span class="faction-icon"><span class="shield-icon"></span></span>
@@ -353,7 +353,7 @@ function renderMapPanel() {
       <span class="me-dot" title="내 위치"></span>
       <div class="legend">
         <span><i class="dot"></i>내 위치</span>
-        <span><i class="dot empty"></i>외부 API 도서관</span>
+        <span><i class="dot empty"></i>주변 도서관</span>
       </div>
       ${renderMapStatus()}
     </div>
@@ -395,7 +395,7 @@ function renderLocationNotice() {
   if (!state.locationSource) return "";
   const text =
     state.locationSource === "current"
-      ? "현재 위치 기준으로 카카오 로컬 API에서 도서관을 검색했습니다."
+      ? "현재 위치 기준으로 주변 도서관을 검색했습니다."
       : "위치 권한이 없어서 서울 시청 기준으로 도서관을 검색했습니다.";
   return `<p class="api-note">${text}</p>`;
 }
@@ -407,7 +407,7 @@ function renderLibraryList() {
         <span class="faction-icon"><span class="book-icon"></span></span>
         <span>
           <h3>도서관 검색 중</h3>
-          <span class="muted">카카오 로컬 API 호출</span>
+          <span class="muted">현재 위치 주변 검색</span>
         </span>
       </article>
     `;
@@ -445,7 +445,6 @@ function renderLibraryCard(library) {
         <h3>${library.name}</h3>
         <span class="muted">${library.distance} · ${library.address}</span>
       </span>
-      <span class="chip">외부 API</span>
       <i class="chevron"></i>
     </button>
   `;
@@ -475,17 +474,8 @@ function renderDetail() {
           <p>${library.address}</p>
         </div>
       </div>
-      <article class="info-card occupation-card">
-        <span class="faction-icon external-icon"><span class="library-icon"></span></span>
-        <span>
-          <p class="section-kicker">연동 소스</p>
-          <h2>카카오 로컬</h2>
-          <span class="muted">실시간 장소 검색 결과</span>
-        </span>
-        <strong>${library.distance}</strong>
-      </article>
       <article class="info-card">
-        <p class="section-kicker">외부 API 데이터</p>
+        <p class="section-kicker">도서관 정보</p>
         <div class="info-grid">
           <span class="info-line"><i class="library-icon"></i><span>장소명</span><strong>${library.name}</strong></span>
           <span class="info-line"><i class="book-icon"></i><span>전화번호</span><strong>${library.phone || "미제공"}</strong></span>
@@ -616,7 +606,7 @@ function renderMyContent() {
     if (state.libraries.length) {
       return state.libraries.slice(0, 5).map(renderContributionCard).join("");
     }
-    return `<article class="info-card"><h3>아직 불러온 도서관이 없습니다</h3><p class="small-text">지도 탭에서 외부 API 도서관을 먼저 불러와 주세요.</p></article>`;
+    return `<article class="info-card"><h3>아직 불러온 도서관이 없습니다</h3><p class="small-text">지도 탭에서 주변 도서관을 먼저 불러와 주세요.</p></article>`;
   }
 
   return books
@@ -644,7 +634,6 @@ function renderContributionCard(library) {
         <h3>${library.name}</h3>
         <p class="small-text">${library.address}</p>
         <p class="review">
-          <span class="chip">외부 API</span>
           <span class="chip">거리 ${library.distance}</span>
         </p>
       </span>

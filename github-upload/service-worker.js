@@ -1,4 +1,4 @@
-const CACHE_NAME = "libcon-app-v9";
+const CACHE_NAME = "libcon-app-v11";
 const APP_SHELL = [
   "/",
   "/index.html",
